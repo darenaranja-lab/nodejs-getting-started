@@ -8,7 +8,7 @@ pipeline {
     stages {
         stage('Clone Repo') {
             steps {
-                git 'https://github.com/darenaranja-lab/node-js-getting-started.git'
+                git 'https://github.com/darenaranja-lab/nodejs-getting-started.git'
             }
         }
 
