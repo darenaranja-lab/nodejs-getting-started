@@ -1,11 +1,8 @@
 pipeline {
     agent any
-
     environment {
         APP_NAME = "node-app"
-        CONTAINER_NAME = "node-app-container"
-        APP_PORT = "5006"  // Node app listens on 5006
-        HOST_PORT = "443"  // Nginx exposes HTTPS
+        APP_PORT = "5006"
         SSL_DIR = "/etc/ssl/node-app"
     }
 
@@ -14,7 +11,7 @@ pipeline {
             steps {
                 echo "Cloning open-source repo..."
                 git branch: 'main', url: 'https://github.com/heroku/node-js-sample.git'
-                sh 'ls -l' // Show workspace contents in console
+                sh 'ls -l'
             }
         }
 
@@ -32,7 +29,7 @@ pipeline {
             steps {
                 echo "Stopping old container if it exists..."
                 sh """
-                    docker rm -f $CONTAINER_NAME || true
+                    docker rm -f $APP_NAME-container || true
                     docker ps -a
                 """
             }
@@ -42,8 +39,8 @@ pipeline {
             steps {
                 echo "Running new Docker container for Node app..."
                 sh """
-                    docker run -d -p $APP_PORT:$APP_PORT --name $CONTAINER_NAME $APP_NAME
-                    docker ps | grep $CONTAINER_NAME
+                    docker run -d -p $APP_PORT:$APP_PORT --name $APP_NAME-container $APP_NAME
+                    docker ps | grep $APP_NAME-container
                 """
             }
         }
@@ -51,17 +48,21 @@ pipeline {
         stage('Setup Nginx & SSL') {
             steps {
                 echo "Setting up Nginx reverse proxy with SSL..."
-                sh """
-                    # Create SSL directory
-                    sudo mkdir -p $SSL_DIR
+                
+                // Create SSL directory
+                sh "sudo mkdir -p $SSL_DIR"
 
-                    # Generate self-signed certificates
-                    sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                // Generate self-signed certificate
+                sh """
+                    sudo openssl req -x509 -nodes -days 365 \
+                        -newkey rsa:2048 \
                         -keyout $SSL_DIR/nginx.key \
                         -out $SSL_DIR/nginx.crt \
-                        -subj "/C=PH/ST=MetroManila/L=QuezonCity/O=DevOps/OU=Interview/CN=localhost"
+                        -subj "/CN=localhost"
+                """
 
-                    # Write Nginx config
+                // Nginx config
+                sh """
                     echo '
                     server {
                         listen 443 ssl;
@@ -72,28 +73,31 @@ pipeline {
 
                         location / {
                             proxy_pass http://127.0.0.1:$APP_PORT;
-                            proxy_set_header Host $host;
-                            proxy_set_header X-Real-IP $remote_addr;
-                            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                            proxy_set_header X-Forwarded-Proto $scheme;
+                            proxy_set_header Host \$host;
+                            proxy_set_header X-Real-IP \$remote_addr;
+                            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                            proxy_set_header X-Forwarded-Proto \$scheme;
                         }
-                    }' | sudo tee /etc/nginx/sites-available/node-app.conf
+                    }
+                    ' | sudo tee /etc/nginx/sites-available/node-app.conf
+                """
 
-                    # Enable site and reload Nginx
-                    sudo ln -sf /etc/nginx/sites-available/node-app.conf /etc/nginx/sites-enabled/node-app.conf
+                // Enable site and restart Nginx
+                sh """
+                    sudo ln -sf /etc/nginx/sites-available/node-app.conf /etc/nginx/sites-enabled/
                     sudo nginx -t
                     sudo systemctl restart nginx
-
-                    # Show Nginx status
-                    sudo systemctl status nginx | head -n 20
                 """
             }
         }
     }
 
     post {
-        always {
-            echo "Pipeline finished. Node app should be accessible via HTTPS (https://<VM-IP>)"
+        success {
+            echo "Pipeline finished successfully. Node app should be accessible via HTTPS (https://<VM-IP>)"
+        }
+        failure {
+            echo "Pipeline failed. Check the console logs for errors."
         }
     }
 }
