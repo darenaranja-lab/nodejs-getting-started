@@ -3,7 +3,6 @@ pipeline {
     environment {
         APP_NAME = "node-app"
         APP_PORT = "5006"
-        SSL_DIR = "/etc/ssl/node-app"
     }
 
     stages {
@@ -44,57 +43,11 @@ pipeline {
                 """
             }
         }
-
-        stage('Setup Nginx & SSL') {
-            steps {
-                echo "Setting up Nginx reverse proxy with SSL..."
-                
-                // Create SSL directory
-                sh "sudo mkdir -p $SSL_DIR"
-
-                // Generate self-signed certificate
-                sh """
-                    sudo openssl req -x509 -nodes -days 365 \
-                        -newkey rsa:2048 \
-                        -keyout $SSL_DIR/nginx.key \
-                        -out $SSL_DIR/nginx.crt \
-                        -subj "/CN=localhost"
-                """
-
-                // Nginx config
-                sh """
-                    echo '
-                    server {
-                        listen 443 ssl;
-                        server_name localhost;
-
-                        ssl_certificate $SSL_DIR/nginx.crt;
-                        ssl_certificate_key $SSL_DIR/nginx.key;
-
-                        location / {
-                            proxy_pass http://127.0.0.1:$APP_PORT;
-                            proxy_set_header Host \$host;
-                            proxy_set_header X-Real-IP \$remote_addr;
-                            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                            proxy_set_header X-Forwarded-Proto \$scheme;
-                        }
-                    }
-                    ' | sudo tee /etc/nginx/sites-available/node-app.conf
-                """
-
-                // Enable site and restart Nginx
-                sh """
-                    sudo ln -sf /etc/nginx/sites-available/node-app.conf /etc/nginx/sites-enabled/
-                    sudo nginx -t
-                    sudo systemctl restart nginx
-                """
-            }
-        }
     }
 
     post {
         success {
-            echo "Pipeline finished successfully. Node app should be accessible via HTTPS (https://<VM-IP>)"
+            echo "Pipeline finished successfully. Node app should be accessible via http://<VM-IP>:$APP_PORT"
         }
         failure {
             echo "Pipeline failed. Check the console logs for errors."
