@@ -1,13 +1,9 @@
 pipeline {
     agent any
 
-    environment {
-        DOCKER_IMAGE = "node-app"
-        CONTAINER_NAME = "node-app-container"
-    }
-
     stages {
-        stage('Checkout SCM') {
+
+        stage('Checkout') {
             steps {
                 checkout scm
             }
@@ -15,40 +11,17 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    sh "docker build -t ${DOCKER_IMAGE} ."
-                }
+                sh 'docker build -t node-app .'
             }
         }
 
-        stage('Stop Old Container') {
+        stage('Deploy') {
             steps {
-                script {
-                    sh '''
-                    if [ $(docker ps -q -f name=${CONTAINER_NAME}) ]; then
-                        echo "Stopping and removing old container..."
-                        docker stop ${CONTAINER_NAME}
-                        docker rm ${CONTAINER_NAME}
-                    else
-                        echo "No old container to remove."
-                    fi
-                    '''
-                }
+                sh '''
+                docker rm -f node-app-container || true
+                docker run -d -p 3000:5006 --name node-app-container node-app
+                '''
             }
-        }
-
-        stage('Run New Container') {
-            steps {
-                script {
-                    sh "docker run -d -p 3000:3000 --name ${CONTAINER_NAME} ${DOCKER_IMAGE}"
-                }
-            }
-        }
-    }
-
-    post {
-        always {
-            echo "Pipeline finished."
         }
     }
 }
